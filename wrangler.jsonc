@@ -9,7 +9,7 @@
     "run_worker_first": ["/api/*"]
   },
   "kv_namespaces": [
-    { "binding": "HCDLE_KV", "id": "PEGAR_ACA_EL_ID_DEL_KV" }
+    { "binding": "HCDLE_KV", "id": "2ea502f3287b42919878cf46f090dacc" }
   ],
   "observability": { "enabled": true }
 }
