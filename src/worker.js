@@ -222,6 +222,13 @@ export async function handle(req, env, now = Date.now()) {
 export default {
   async fetch(req, env) {
     const { pathname } = new URL(req.url);
+    if (pathname === "/api/_diag") {
+      return json({
+        keys: Object.keys(env),
+        hasAdminKey: !!env.ADMIN_KEY,
+        hasSessionSecret: !!env.SESSION_SECRET,
+      });
+    }
     if (pathname === "/api" || pathname.startsWith("/api/")) return handle(req, env);
     return env.ASSETS.fetch(req);
   },
