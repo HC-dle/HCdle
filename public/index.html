@@ -348,7 +348,7 @@ function mixSC(){if(scMixed||!scList.length||!a.length)return;scMixed=!0,scList.
     <h2>HCdle</h2>
     <p id="hx-sub">Elegí tu nick para jugar. Si es tu primera vez, el PIN que pongas queda como tu clave.</p>
     <label for="hx-nick">Nick</label>
-    <select id="hx-nick" required></select>
+    <select id="hx-nick" required></select><input id="hx-nick2" type="text" autocapitalize="off" autocomplete="off" hidden>
     <label for="hx-pin">PIN (4 a 8 números)</label>
     <input id="hx-pin" class="pin" type="password" inputmode="numeric" pattern="\d{4,8}" maxlength="8" required>
     <button class="hx-btn" id="hx-go" type="submit">Entrar</button>
@@ -415,11 +415,25 @@ function fire(n,px){
 window.__hxFire=fire;
 
 // ---------- API ----------
+var OFFTOK="offline-test",OFFKEY="hcdle-off-test";
+function offGet(){try{return JSON.parse(localStorage.getItem(OFFKEY)||"null")||{streak:0,best:0,last:-9}}catch(e){return {streak:0,best:0,last:-9}}}
+function offMe(){var o=offGet(),d=dayNumber(),st=o.last>=d-1?o.streak:0;return {__status:200,token:OFFTOK,nick:"admin",streak:st,best:o.best,doneToday:o.last===d}}
+function offApi(path,b){
+  if(path==="login")return b&&b.nick==="admin"&&b.pin==="0000"?offMe():{__status:401,error:"Sin conexión con el servidor."};
+  if(token!==OFFTOK)return {__status:401,error:"No autorizado"};
+  if(path==="me")return offMe();
+  if(path==="scoreboard"){var m=offMe();return {__status:200,rows:[{nick:m.nick,streak:m.streak,best:m.best,doneToday:m.doneToday}]}}
+  if(path==="complete"){var o=offGet(),d=dayNumber();if(o.last!==d){o.streak=o.last===d-1?o.streak+1:1;o.best=Math.max(o.best,o.streak);o.last=d;try{localStorage.setItem(OFFKEY,JSON.stringify(o))}catch(e){}}return offMe()}
+  if(path==="nicks")return {__status:200,nicks:[]};
+  return {__status:400,error:"No disponible en modo offline"};
+}
 function api(path,opts){
   opts=opts||{};opts.headers=opts.headers||{};
+  var b=opts.body,tryOff=path==="login"&&b&&typeof b==="object"&&b.nick==="admin"&&b.pin==="0000";
+  if(token===OFFTOK)return Promise.resolve(offApi(path,typeof b==="object"?b:null));
   if(token)opts.headers.authorization="Bearer "+token;
   if(opts.body&&typeof opts.body!=="string"){opts.body=JSON.stringify(opts.body);opts.headers["content-type"]="application/json"}
-  return fetch("/api/"+path,opts).then(function(r){return r.json().catch(function(){return {error:"Respuesta inválida del servidor"}}).then(function(j){j.__status=r.status;return j})});
+  return fetch("/api/"+path,opts).then(function(r){return r.json().catch(function(){return {error:"Respuesta inválida del servidor"}}).then(function(j){j.__status=r.status;return j})}).then(function(j){return tryOff&&j.error==="Respuesta inválida del servidor"?offApi(path,b):j}).catch(function(e){if(tryOff)return offApi(path,b);throw e});
 }
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 
@@ -482,10 +496,12 @@ document.addEventListener("click",function(e){if(e.target.isConnected&&!$("hx-sb
 function showLogin(msg){
   $("hx-login").hidden=false;$("hx-sb").hidden=true;me=null;
   $("hx-lmsg").className="hx-msg";$("hx-lmsg").textContent=msg||"";
+  $("hx-nick").hidden=!1;$("hx-nick").required=!0;$("hx-nick2").hidden=!0;
+  var offUI=function(){$("hx-nick").hidden=!0;$("hx-nick").required=!1;$("hx-nick2").hidden=!1;$("hx-lmsg").textContent="Sin conexión con el servidor. Podés entrar con un usuario de prueba."};
   api("nicks").then(function(r){
-    if(!r.nicks){$("hx-lmsg").textContent="No se pudo conectar con el servidor. Recargá la página.";return}
+    if(!r.nicks){offUI();return}
     $("hx-nick").innerHTML=r.nicks.map(function(n){return '<option value="'+esc(n.nick)+'">'+esc(n.nick)+(n.registered?'':' (nuevo)')+'</option>'}).join('');
-  }).catch(function(){$("hx-lmsg").textContent="No se pudo conectar con el servidor. Recargá la página."});
+  }).catch(offUI);
 }
 function logout(){
   try{localStorage.removeItem(AUTH)}catch(e){}
@@ -494,7 +510,7 @@ function logout(){
 $("hx-form").onsubmit=function(e){
   e.preventDefault();
   var btn=$("hx-go");btn.disabled=true;$("hx-lmsg").textContent="";
-  api("login",{method:"POST",body:{nick:$("hx-nick").value,pin:$("hx-pin").value}}).then(function(r){
+  api("login",{method:"POST",body:{nick:$("hx-nick2").hidden?$("hx-nick").value:$("hx-nick2").value.trim(),pin:$("hx-pin").value}}).then(function(r){
     btn.disabled=false;
     if(r.token){
       token=r.token;try{localStorage.setItem(AUTH,token)}catch(x){}
@@ -548,7 +564,7 @@ boot();
 <style>
 .wall .wi{position:absolute;inset:-6%;background-size:cover;background-position:center;background-repeat:no-repeat;filter:saturate(1.1) blur(6px);opacity:0;transition:opacity .7s ease}
 .wall .wi.on{opacity:1}
-.bg-btn{position:fixed;z-index:40;right:max(10px,env(safe-area-inset-right,0px));top:60px;width:38px;height:38px;padding:0;display:grid;place-items:center;color:var(--accent);background:var(--veil);border:2px solid var(--accent);border-radius:50%;box-shadow:var(--pop-sm);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);cursor:pointer;opacity:.55;transition:opacity .15s ease,transform .15s ease;-webkit-tap-highlight-color:transparent}
+.bg-btn{position:fixed;z-index:40;right:max(10px,env(safe-area-inset-right,0px));top:13px;width:38px;height:38px;padding:0;display:grid;place-items:center;color:var(--accent);background:var(--veil);border:2px solid var(--accent);border-radius:50%;box-shadow:var(--pop-sm);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);cursor:pointer;opacity:.55;transition:opacity .15s ease,transform .15s ease;-webkit-tap-highlight-color:transparent}
 .bg-btn:hover,.bg-btn:focus-visible{opacity:1}
 .bg-btn:active{transform:rotate(90deg) scale(.92)}
 .bg-btn svg{width:18px;height:18px;display:block}
@@ -575,6 +591,8 @@ function show(i,fade){
   top=nxt;
 }
 show(cur,false);
+function place(){const sb=document.getElementById("hx-sb"),w=sb&&!sb.hidden&&sb.offsetWidth;btn.style.right=w?(document.documentElement.clientWidth-sb.getBoundingClientRect().left+8)+"px":"";}
+place();setInterval(place,500);addEventListener("resize",place);
 btn.addEventListener("click",()=>{
   show((cur+1)%BGS.length,true);
   try{localStorage.setItem(KEY,String(cur))}catch{}
